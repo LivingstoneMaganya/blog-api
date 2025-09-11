@@ -22,10 +22,23 @@ db.connect(err => {
   console.log('✅ Connected to MySQL Database');
 });
 
+// Inject db into requests
+app.use((req, res, next) => {
+  req.db = db;
+  next();
+});
+
+
 // Example route
 app.get('/', (req, res) => {
   res.send('Blog API is running...');
 });
+
+
+// Use posts CRUD routes
+const postsRoutes = require("./routes/posts");
+app.use("/api/posts", postsRoutes);
+
 
 // Start server
 app.listen(process.env.PORT, () => {
