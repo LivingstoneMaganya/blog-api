@@ -22,6 +22,7 @@ db.connect(err => {
   console.log('✅ Connected to MySQL Database');
 });
 
+
 // Inject db into requests
 app.use((req, res, next) => {
   req.db = db;
@@ -29,15 +30,25 @@ app.use((req, res, next) => {
 });
 
 
+// Use posts CRUD routes
+const postsRoutes = require("./routes/posts");
+app.use("/api/posts", postsRoutes);
+
+
+// Global error handler (must be after routes)
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err); // server log (do not leak stack to clients)
+  // If err has status, use it; otherwise 500
+  const status = err.status || 500;
+  const message = process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message;
+  res.status(status).json({ error: message });
+});
+
+
 // Example route
 app.get('/', (req, res) => {
   res.send('Blog API is running...');
 });
-
-
-// Use posts CRUD routes
-const postsRoutes = require("./routes/posts");
-app.use("/api/posts", postsRoutes);
 
 
 // Start server

@@ -1,53 +1,88 @@
-const express = require("express");
+// routes/posts.js
+const express = require('express');
 const router = express.Router();
-const db = require("../db"); // adjust if your db connection file is named differently
+const { body, param, validationResult } = require('express-validator');
 
-// CREATE - Add a new blog post
-router.post("/", (req, res) => {
-  const { title, content } = req.body;
-  const sql = "INSERT INTO posts (title, content) VALUES (?, ?)";
-  db.query(sql, [title, content], (err, result) => {
-    if (err) return res.status(500).json({ error: err });
-    res.status(201).json({ message: "Post created", postId: result.insertId });
+// Use the db connection from req.db (injected from index.js)
+
+// Validation helpers
+const postValidators = [
+  body('title')
+    .trim()
+    .notEmpty().withMessage('Title is required')
+    .isLength({ max: 255 }).withMessage('Title must be <= 255 chars'),
+  body('content')
+    .trim()
+    .notEmpty().withMessage('Content is required')
+    .isLength({ min: 5 }).withMessage('Content must be at least 5 characters'),
+  body('author')
+    .optional()
+    .trim()
+    .isLength({ max: 100 }).withMessage('Author must be <= 100 chars')
+];
+
+// CREATE
+router.post('/', postValidators, (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const { title, content, author } = req.body;
+  const sql = 'INSERT INTO posts (title, content, author) VALUES (?, ?, ?)';
+  req.db.query(sql, [title, content, author || null], (err, result) => {
+    if (err) return next(err); // send to global error handler
+    res.status(201).json({ id: result.insertId, title, content, author: author || null });
   });
 });
 
-// READ - Get all posts
-router.get("/", (req, res) => {
-  db.query("SELECT * FROM posts", (err, results) => {
-    if (err) return res.status(500).json({ error: err });
+// READ all
+router.get('/', (req, res, next) => {
+  req.db.query('SELECT * FROM posts ORDER BY created_at DESC', (err, results) => {
+    if (err) return next(err);
     res.json(results);
   });
 });
 
-// READ - Get a single post by ID
-router.get("/:id", (req, res) => {
+// READ one
+router.get('/:id', param('id').isInt().withMessage('id must be an integer'), (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const { id } = req.params;
-  db.query("SELECT * FROM posts WHERE id = ?", [id], (err, results) => {
-    if (err) return res.status(500).json({ error: err });
-    if (results.length === 0) return res.status(404).json({ message: "Post not found" });
+  req.db.query('SELECT * FROM posts WHERE id = ?', [id], (err, results) => {
+    if (err) return next(err);
+    if (!results.length) return res.status(404).json({ error: 'Post not found' });
     res.json(results[0]);
   });
 });
 
-// UPDATE - Edit a post
-router.put("/:id", (req, res) => {
+// UPDATE
+router.put('/:id', [
+  param('id').isInt().withMessage('id must be an integer'),
+  ...postValidators
+], (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const { id } = req.params;
-  const { title, content } = req.body;
-  const sql = "UPDATE posts SET title = ?, content = ? WHERE id = ?";
-  db.query(sql, [title, content, id], (err, result) => {
-    if (err) return res.status(500).json({ error: err });
-    res.json({ message: "Post updated" });
+  const { title, content, author } = req.body;
+  const sql = 'UPDATE posts SET title = ?, content = ?, author = ? WHERE id = ?';
+  req.db.query(sql, [title, content, author || null, id], (err, result) => {
+    if (err) return next(err);
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Post not found' });
+    res.json({ message: 'Post updated' });
   });
 });
 
-// DELETE - Remove a post
-router.delete("/:id", (req, res) => {
+// DELETE
+router.delete('/:id', param('id').isInt().withMessage('id must be an integer'), (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const { id } = req.params;
-  const sql = "DELETE FROM posts WHERE id = ?";
-  db.query(sql, [id], (err, result) => {
-    if (err) return res.status(500).json({ error: err });
-    res.json({ message: "Post deleted" });
+  req.db.query('DELETE FROM posts WHERE id = ?', [id], (err, result) => {
+    if (err) return next(err);
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Post not found' });
+    res.json({ message: 'Post deleted' });
   });
 });
 
